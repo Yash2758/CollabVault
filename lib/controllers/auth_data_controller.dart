@@ -1,13 +1,14 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/app_user.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Controller for handling authentication flows with Supabase.
 class AuthDataController {
   late final SupabaseClient _client;
   
   // Developer toggle for 2FA - set to false to disable 2FA
-  static const bool _enable2FA = false;
+  static const bool _enable2FA = true;
   
   // Supabase credentials - replace with your actual values
   static const String _supabaseUrl = 'https://uhrpoudutcmfwwwjcrid.supabase.co';
@@ -26,7 +27,8 @@ class AuthDataController {
   static Future<AuthDataController> create() async {
     final controller = AuthDataController._();
     await controller._initializeSupabase();
-    await controller.checkPersistentLogin();
+    final isLoggedIn = await controller.checkPersistentLogin();
+    controller.userLoggedInNotifier.value = isLoggedIn;
     return controller;
   }
   
@@ -38,11 +40,6 @@ class AuthDataController {
       anonKey: _supabaseAnonKey,
     );
     _client = Supabase.instance.client;
-    // Listen for auth state changes to keep login state in sync
-    _client.auth.onAuthStateChange.listen((data) {
-      final session = data.session;
-      userLoggedInNotifier.value = session != null;
-    });
   }
   
   AppUser? get tempUser => _tempUser;
@@ -50,6 +47,20 @@ class AuthDataController {
   /// Check if user is currently logged in
   bool isUserLoggedIn() {
     return userLoggedInNotifier.value;
+  }
+  
+  /// Store session tokens in local storage
+  Future<void> _storeSessionTokens(Session session) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('access_token', session.accessToken);
+    await prefs.setString('refresh_token', session.refreshToken ?? '');
+  }
+
+  /// Remove session tokens from local storage
+  Future<void> _removeSessionTokens() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('access_token');
+    await prefs.remove('refresh_token');
   }
   
   /// Sign up with email and password, then create a user profile in 'users' table.
@@ -78,15 +89,15 @@ class AuthDataController {
     };
     await _client.from('users').insert(profileData);
     
-    // If 2FA is enabled, don't set user as logged in yet
     if (_enable2FA) {
       _tempUser = AppUser.fromJson(profileData);
-      // Send email OTP for 2FA
       await sendEmailOtp(email: email);
     } else {
+      if (response.session != null) {
+        await _storeSessionTokens(response.session!);
+      }
       userLoggedInNotifier.value = true;
     }
-    
     return AppUser.fromJson(profileData);
   }
 
@@ -113,13 +124,15 @@ class AuthDataController {
     
     final user = AppUser.fromJson(profileRes);
     
-    // If 2FA is enabled, store temp user and don't set as logged in yet
     if (_enable2FA) {
+      userLoggedInNotifier.value = false;
       _tempUser = user;
-      // Send email OTP for 2FA
       await sendEmailOtp(email: user.email);
     } else {
-      userLoggedInNotifier.value = true;
+      if (response.session != null) {
+        await _storeSessionTokens(response.session!);
+      }
+      userLoggedInNotifier.value = !_enable2FA;
     }
     
     return user;
@@ -187,7 +200,11 @@ class AuthDataController {
     }
     
     // OTP verified successfully, set user as logged in
+    if (res.session != null) {
+      await _storeSessionTokens(res.session!);
+    }
     userLoggedInNotifier.value = true;
+    print('userLoggedInNotifier set to true after 2FA');
     _tempUser = null; // Clear temp user data
   }
 
@@ -244,8 +261,9 @@ class AuthDataController {
   /// Sign out current user
   Future<void> signOut() async {
     await _client.auth.signOut();
+    await _removeSessionTokens();
     _tempUser = null; // Clear temp user data
-    // Do NOT set userLoggedInNotifier here; let the auth state listener handle it.
+    userLoggedInNotifier.value = false;
   }
   
   /// Check if 2FA is enabled
@@ -254,11 +272,29 @@ class AuthDataController {
   /// Get current temp user (for 2FA flow)
   AppUser? get currentTempUser => _tempUser;
 
-  /// Check for an existing session and update login state
-  Future<void> checkPersistentLogin() async {
-    final session = _client.auth.currentSession;
-    print('Supabase session on startup: ' + session.toString());
-    userLoggedInNotifier.value = session != null;
+  /// Check for an existing session and return if user is persistently logged in (with 2FA if enabled)
+  Future<bool> checkPersistentLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString('access_token');
+    final refreshToken = prefs.getString('refresh_token');
+    if (accessToken != null && accessToken.isNotEmpty && refreshToken != null && refreshToken.isNotEmpty) {
+      final response = await _client.auth.setSession(refreshToken);
+      final session = response.session;
+      final userId = session?.user?.id;
+      if (userId != null) {
+        // Fetch user profile for temp user info (optional)
+        final profileRes = await _client.from('users').select().eq('id', userId).single();
+        if (_enable2FA) {
+          // Always require OTP for 2FA on persistent login
+          _tempUser = AppUser.fromJson(profileRes);
+          await sendEmailOtp(email: profileRes['email']);
+          return false;
+        } else {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }
 
