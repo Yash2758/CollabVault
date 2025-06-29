@@ -8,7 +8,7 @@ class AuthDataController {
   late final SupabaseClient _client;
   
   // Developer toggle for 2FA - set to false to disable 2FA
-  static const bool _enable2FA = true;
+  static const bool _enable2FA = false;
   
   // Supabase credentials - replace with your actual values
   static const String _supabaseUrl = 'https://uhrpoudutcmfwwwjcrid.supabase.co';
@@ -284,14 +284,7 @@ class AuthDataController {
       if (userId != null) {
         // Fetch user profile for temp user info (optional)
         final profileRes = await _client.from('users').select().eq('id', userId).single();
-        if (_enable2FA) {
-          // Always require OTP for 2FA on persistent login
-          _tempUser = AppUser.fromJson(profileRes);
-          await sendEmailOtp(email: profileRes['email']);
-          return false;
-        } else {
-          return true;
-        }
+        return true;
       }
     }
     return false;
