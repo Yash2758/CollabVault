@@ -280,7 +280,7 @@ class AuthDataController {
     if (accessToken != null && accessToken.isNotEmpty && refreshToken != null && refreshToken.isNotEmpty) {
       final response = await _client.auth.setSession(refreshToken);
       final session = response.session;
-      final userId = session?.user?.id;
+      final userId = session?.user.id;
       if (userId != null) {
         // Fetch user profile for temp user info (optional)
         final profileRes = await _client.from('users').select().eq('id', userId).single();
