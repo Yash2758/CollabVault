@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../controllers/auth_data_controller.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final AuthDataController authController;
+  const HomeScreen({super.key, required this.authController});
 
   @override
   Widget build(BuildContext context) {
@@ -14,8 +16,9 @@ class HomeScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              Navigator.of(context).pushReplacementNamed('/login');
+            onPressed: () async {
+              await authController.signOut();
+              // Navigation will be handled by the login state listener
             },
           ),
         ],

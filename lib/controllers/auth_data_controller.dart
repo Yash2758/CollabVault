@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/app_user.dart';
+import 'package:flutter/foundation.dart';
 
 /// Controller for handling authentication flows with Supabase.
 class AuthDataController {
@@ -16,7 +17,7 @@ class AuthDataController {
   AppUser? _tempUser;
   
   // Track login state
-  bool _userLoggedIn = true;
+  final ValueNotifier<bool> userLoggedInNotifier = ValueNotifier(false);
   
   // Private constructor
   AuthDataController._();
@@ -25,6 +26,7 @@ class AuthDataController {
   static Future<AuthDataController> create() async {
     final controller = AuthDataController._();
     await controller._initializeSupabase();
+    await controller.checkPersistentLogin();
     return controller;
   }
   
@@ -36,13 +38,18 @@ class AuthDataController {
       anonKey: _supabaseAnonKey,
     );
     _client = Supabase.instance.client;
+    // Listen for auth state changes to keep login state in sync
+    _client.auth.onAuthStateChange.listen((data) {
+      final session = data.session;
+      userLoggedInNotifier.value = session != null;
+    });
   }
   
   AppUser? get tempUser => _tempUser;
   
   /// Check if user is currently logged in
   bool isUserLoggedIn() {
-    return _userLoggedIn;
+    return userLoggedInNotifier.value;
   }
   
   /// Sign up with email and password, then create a user profile in 'users' table.
@@ -77,7 +84,7 @@ class AuthDataController {
       // Send email OTP for 2FA
       await sendEmailOtp(email: email);
     } else {
-      _userLoggedIn = true;
+      userLoggedInNotifier.value = true;
     }
     
     return AppUser.fromJson(profileData);
@@ -112,7 +119,7 @@ class AuthDataController {
       // Send email OTP for 2FA
       await sendEmailOtp(email: user.email);
     } else {
-      _userLoggedIn = true;
+      userLoggedInNotifier.value = true;
     }
     
     return user;
@@ -152,7 +159,7 @@ class AuthDataController {
         .select()
         .eq('id', authUser.id)
         .single();
-    _userLoggedIn = true;
+    userLoggedInNotifier.value = true;
     return AppUser.fromJson(profileRes);
   }
 
@@ -180,7 +187,7 @@ class AuthDataController {
     }
     
     // OTP verified successfully, set user as logged in
-    _userLoggedIn = true;
+    userLoggedInNotifier.value = true;
     _tempUser = null; // Clear temp user data
   }
 
@@ -230,15 +237,15 @@ class AuthDataController {
         .select()
         .eq('id', authUser.id)
         .single();
-    _userLoggedIn = true;
+    userLoggedInNotifier.value = true;
     return AppUser.fromJson(profileRes);
   }
 
   /// Sign out current user
   Future<void> signOut() async {
     await _client.auth.signOut();
-    _userLoggedIn = false;
     _tempUser = null; // Clear temp user data
+    // Do NOT set userLoggedInNotifier here; let the auth state listener handle it.
   }
   
   /// Check if 2FA is enabled
@@ -246,6 +253,13 @@ class AuthDataController {
   
   /// Get current temp user (for 2FA flow)
   AppUser? get currentTempUser => _tempUser;
+
+  /// Check for an existing session and update login state
+  Future<void> checkPersistentLogin() async {
+    final session = _client.auth.currentSession;
+    print('Supabase session on startup: ' + session.toString());
+    userLoggedInNotifier.value = session != null;
+  }
 }
 
 /// Simple exception wrapper for auth errors

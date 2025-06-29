@@ -20,7 +20,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
   
   // Sign up controllers
@@ -32,8 +31,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   
   bool _isLoading = false;
   bool _isPasswordVisible = false;
-  bool _isOtpMode = false;
-  bool _isOtpSent = false;
   bool _isSignupMode = false;
   bool _isSignupPasswordVisible = false;
   bool _isSignupConfirmPasswordVisible = false;
@@ -47,6 +44,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
+    widget.authController.userLoggedInNotifier.addListener(_onLoginStateChanged);
+    // Immediately check in case already logged in
+    if (widget.authController.userLoggedInNotifier.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushReplacementNamed('/home');
+      });
+    }
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -71,12 +75,18 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _animationController.forward();
   }
 
+  void _onLoginStateChanged() {
+    if (widget.authController.userLoggedInNotifier.value) {
+      Navigator.of(context).pushReplacementNamed('/home');
+    }
+  }
+
   @override
   void dispose() {
+    widget.authController.userLoggedInNotifier.removeListener(_onLoginStateChanged);
     _animationController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _phoneController.dispose();
     _otpController.dispose();
     _signupNameController.dispose();
     _signupEmailController.dispose();
@@ -94,18 +104,20 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     });
 
     try {
+      print('Attempting login...');
       // Use AuthDataController for email/password login
       final user = await widget.authController.loginWithEmailPassword(
         email: _emailController.text,
         password: _passwordController.text,
       );
-      
+      print('Login returned user: ' + user.toString());
+      print('is2FAEnabled: ' + widget.authController.is2FAEnabled.toString());
+      print('userLoggedInNotifier: ' + widget.authController.userLoggedInNotifier.value.toString());
       // Check if 2FA is enabled
       if (widget.authController.is2FAEnabled) {
         // Show 2FA verification screen
         setState(() {
           _is2FAMode = true;
-          _isOtpSent = true; // OTP was already sent during login
         });
         
         if (mounted) {
@@ -116,14 +128,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             ),
           );
         }
-      } else {
-        // 2FA disabled, proceed to home
-        widget.userLoggedInNotifier.value = true;
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/home');
-        }
       }
     } catch (e) {
+      print('Login error: ' + e.toString());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -163,7 +170,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         // Show 2FA verification screen
         setState(() {
           _is2FAMode = true;
-          _isOtpSent = true; // OTP was already sent during signup
         });
         
         if (mounted) {
@@ -173,18 +179,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               backgroundColor: Colors.blue,
             ),
           );
-        }
-      } else {
-        // 2FA disabled, proceed to home
-        widget.userLoggedInNotifier.value = true;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Account created successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.of(context).pushReplacementNamed('/home');
         }
       }
     } catch (e) {
@@ -215,10 +209,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     try {
       // Simulate OTP sending
       await Future.delayed(const Duration(seconds: 1));
-      
-      setState(() {
-        _isOtpSent = true;
-      });
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -298,7 +288,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       );
       
       // 2FA successful, update login state and navigate
-      widget.userLoggedInNotifier.value = true;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -306,7 +295,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.of(context).pushReplacementNamed('/home');
       }
     } catch (e) {
       if (mounted) {
@@ -329,8 +317,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   void _toggleMode() {
     setState(() {
       _isSignupMode = !_isSignupMode;
-      _isOtpMode = false;
-      _isOtpSent = false;
+      _is2FAMode = false;
       _otpController.clear();
     });
   }
@@ -412,8 +399,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                       child: GestureDetector(
                                         onTap: () => setState(() {
                                           _isSignupMode = false;
-                                          _isOtpMode = false;
-                                          _isOtpSent = false;
                                         }),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -436,8 +421,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                       child: GestureDetector(
                                         onTap: () => setState(() {
                                           _isSignupMode = true;
-                                          _isOtpMode = false;
-                                          _isOtpSent = false;
                                         }),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -489,7 +472,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                     if (value == null || value.isEmpty) {
                                       return 'Please enter your email';
                                     }
-                                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                    if (!RegExp(r'^[\w\.-]+@([\w-]+\.)+[a-zA-Z]{2,4}$').hasMatch(value)) {
                                       return 'Please enter a valid email';
                                     }
                                     return null;
@@ -703,7 +686,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                       onPressed: () {
                                         setState(() {
                                           _is2FAMode = false;
-                                          _isOtpSent = false;
                                           _otpController.clear();
                                         });
                                       },
@@ -711,7 +693,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                     ),
                                   ],
                                 ),
-                              ] else if (!_isOtpMode) ...[
+                              ] else ...[
                                 // Email/Password Login Form
                                 TextFormField(
                                   controller: _emailController,
@@ -724,7 +706,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                     if (value == null || value.isEmpty) {
                                       return 'Please enter your email';
                                     }
-                                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                    if (!RegExp(r'^[\w\.-]+@([\w-]+\.)+[a-zA-Z]{2,4}$').hasMatch(value)) {
                                       return 'Please enter a valid email';
                                     }
                                     return null;
@@ -792,116 +774,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                           ),
                                   ),
                                 ),
-                              ] else ...[
-                                // Phone OTP Login Form
-                                TextFormField(
-                                  controller: _phoneController,
-                                  keyboardType: TextInputType.phone,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
-                                  decoration: const InputDecoration(
-                                    labelText: 'Phone Number',
-                                    prefixIcon: Icon(Icons.phone_outlined),
-                                  ),
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Please enter your phone number';
-                                    }
-                                    if (value.length < 10) {
-                                      return 'Please enter a valid phone number';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 16),
-                                
-                                if (_isOtpSent) ...[
-                                  TextFormField(
-                                    controller: _otpController,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                      LengthLimitingTextInputFormatter(6),
-                                    ],
-                                    decoration: const InputDecoration(
-                                      labelText: 'OTP Code',
-                                      prefixIcon: Icon(Icons.security_outlined),
-                                    ),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter OTP';
-                                      }
-                                      if (value.length != 6) {
-                                        return 'OTP must be 6 digits';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 24),
-                                  
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 50,
-                                    child: ElevatedButton(
-                                      onPressed: _isLoading ? null : _handle2FAVerification,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue.shade700,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                      child: _isLoading
-                                          ? const SizedBox(
-                                              height: 20,
-                                              width: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                              ),
-                                            )
-                                          : const Text(
-                                              'Verify OTP',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                ] else ...[
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 50,
-                                    child: ElevatedButton(
-                                      onPressed: _isLoading ? null : _handleOtpSend,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue.shade700,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                      child: _isLoading
-                                          ? const SizedBox(
-                                              height: 20,
-                                              width: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                              ),
-                                            )
-                                          : const Text(
-                                              'Send OTP',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                ],
                               ],
                               
                               const SizedBox(height: 24),
@@ -928,9 +800,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
-                                    _isSignupMode 
-                                        ? "Already have an account? " 
-                                        : "Don't have an account? ",
+                                    _isSignupMode ? "Already have an account? " : "Don't have an account? ",
                                     style: TextStyle(
                                       color: Colors.grey.shade600,
                                     ),

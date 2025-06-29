@@ -21,38 +21,41 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'CollabVault',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          filled: true,
-          fillColor: Colors.grey.shade50,
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+    return ValueListenableBuilder<bool>(
+      valueListenable: authController.userLoggedInNotifier,
+      builder: (context, loggedIn, _) {
+        return MaterialApp(
+          title: 'CollabVault',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.light,
             ),
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            useMaterial3: true,
+            inputDecorationTheme: InputDecorationTheme(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade50,
+            ),
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
           ),
-        ),
-      ),
-      initialRoute: '/login',
-      routes: {
-        '/login': (context) => LoginScreen(
-          authController: authController,
-          userLoggedInNotifier: userLoggedInNotifier,
-        ),
-        '/home': (context) => const HomeScreen(),
+          home: loggedIn
+              ? HomeScreen(authController: authController)
+              : LoginScreen(
+                  authController: authController,
+                  userLoggedInNotifier: authController.userLoggedInNotifier,
+                ),
+        );
       },
     );
   }
