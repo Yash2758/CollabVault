@@ -3,20 +3,54 @@ import '../models/app_user.dart';
 
 /// Controller for handling authentication flows with Supabase.
 class AuthDataController {
-  /// Supabase client instance
-  final SupabaseClient _client;
-
-  bool _userLoggedIn = false;
-  bool get userLoggedIn => _userLoggedIn;
-
-  AuthDataController({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
-
+  late final SupabaseClient _client;
+  
+  // Developer toggle for 2FA - set to false to disable 2FA
+  static const bool _enable2FA = false;
+  
+  // Supabase credentials - replace with your actual values
+  static const String _supabaseUrl = 'https://uhrpoudutcmfwwwjcrid.supabase.co';
+  static const String _supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVocnBvdWR1dGNtZnd3d2pjcmlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3ODY2NjIsImV4cCI6MjA2NjM2MjY2Mn0.eD0GzV2jihhCWbzqTkKDS18ieZhJTisqreGuFFaXyZM';
+  
+  // Store temporary user data after email/password login for 2FA
+  AppUser? _tempUser;
+  
+  // Track login state
+  bool _userLoggedIn = true;
+  
+  // Private constructor
+  AuthDataController._();
+  
+  // Factory constructor for async initialization
+  static Future<AuthDataController> create() async {
+    final controller = AuthDataController._();
+    await controller._initializeSupabase();
+    return controller;
+  }
+  
+  /// Initialize Supabase client with credentials
+  Future<void> _initializeSupabase() async {
+    // Initialize Supabase with our credentials
+    await Supabase.initialize(
+      url: _supabaseUrl,
+      anonKey: _supabaseAnonKey,
+    );
+    _client = Supabase.instance.client;
+  }
+  
+  AppUser? get tempUser => _tempUser;
+  
+  /// Check if user is currently logged in
+  bool isUserLoggedIn() {
+    return _userLoggedIn;
+  }
+  
   /// Sign up with email and password, then create a user profile in 'users' table.
   Future<AppUser> signUp({
     required String email,
     required String password,
     required String name,
+    String? phone,
     String? profilePictureUrl,
   }) async {
     final response = await _client.auth.signUp(
@@ -32,17 +66,69 @@ class AuthDataController {
       'id': authUser.id,
       'name': name,
       'email': email,
+      'phone': phone,
       'profilePictureUrl': profilePictureUrl,
     };
     await _client.from('users').insert(profileData);
-    _userLoggedIn = true;
+    
+    // If 2FA is enabled, don't set user as logged in yet
+    if (_enable2FA) {
+      _tempUser = AppUser.fromJson(profileData);
+      // Send email OTP for 2FA
+      await sendEmailOtp(email: email);
+    } else {
+      _userLoggedIn = true;
+    }
+    
     return AppUser.fromJson(profileData);
+  }
+
+  /// Login with email and password (first step of 2FA flow)
+  Future<AppUser> loginWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    final response = await _client.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
+    final authUser = response.user;
+    if (authUser == null) {
+      throw AuthException('Login failed');
+    }
+    
+    // Fetch user profile
+    final profileRes = await _client
+        .from('users')
+        .select()
+        .eq('id', authUser.id)
+        .single();
+    
+    final user = AppUser.fromJson(profileRes);
+    
+    // If 2FA is enabled, store temp user and don't set as logged in yet
+    if (_enable2FA) {
+      _tempUser = user;
+      // Send email OTP for 2FA
+      await sendEmailOtp(email: user.email);
+    } else {
+      _userLoggedIn = true;
+    }
+    
+    return user;
   }
 
   /// Send OTP to phone number for sign-in or verification.
   Future<void> sendOtp({required String phone}) async {
     await _client.auth.signInWithOtp(
       phone: phone,
+    );
+  }
+
+  /// Send email OTP for 2FA
+  Future<void> sendEmailOtp({required String email}) async {
+    await _client.auth.signInWithOtp(
+      email: email,
     );
   }
 
@@ -68,6 +154,34 @@ class AuthDataController {
         .single();
     _userLoggedIn = true;
     return AppUser.fromJson(profileRes);
+  }
+
+  /// Verify email OTP for 2FA (second step of 2FA flow)
+  Future<void> verify2FAOtp({
+    required String email,
+    required String token,
+  }) async {
+    if (!_enable2FA) {
+      throw AuthException('2FA is disabled');
+    }
+    
+    if (_tempUser == null) {
+      throw AuthException('No pending login session found');
+    }
+    
+    final res = await _client.auth.verifyOTP(
+      email: email,
+      token: token,
+      type: OtpType.email,
+    );
+    
+    if (res.user == null) {
+      throw AuthException('OTP verification failed');
+    }
+    
+    // OTP verified successfully, set user as logged in
+    _userLoggedIn = true;
+    _tempUser = null; // Clear temp user data
   }
 
   /// Complete login flow after OTP: alias for verifyOtp
@@ -124,7 +238,14 @@ class AuthDataController {
   Future<void> signOut() async {
     await _client.auth.signOut();
     _userLoggedIn = false;
+    _tempUser = null; // Clear temp user data
   }
+  
+  /// Check if 2FA is enabled
+  bool get is2FAEnabled => _enable2FA;
+  
+  /// Get current temp user (for 2FA flow)
+  AppUser? get currentTempUser => _tempUser;
 }
 
 /// Simple exception wrapper for auth errors

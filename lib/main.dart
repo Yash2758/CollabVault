@@ -7,15 +7,13 @@ import 'screens/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  await Supabase.initialize(
-    url: 'YOUR_SUPABASE_URL', // Replace with your actual Supabase URL
-    anonKey: 'YOUR_SUPABASE_ANON_KEY', // Replace with your actual anon key
-  );
+  // Initialize the auth controller
+  authController = await AuthDataController.create();
   
   runApp(const MyApp());
 }
 
-final AuthDataController authController = AuthDataController();
+late final AuthDataController authController;
 final ValueNotifier<bool> userLoggedInNotifier = ValueNotifier<bool>(false);
 
 class MyApp extends StatelessWidget {

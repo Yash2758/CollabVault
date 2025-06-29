@@ -22,6 +22,7 @@ class AppUser extends Equatable {
   final String id;
   final String name;
   final String email;
+  final String? phone;
   final String? profilePictureUrl;
   final AppUserType userType;
 
@@ -29,17 +30,19 @@ class AppUser extends Equatable {
     required this.id,
     required this.name,
     required this.email,
+    this.phone,
     this.profilePictureUrl,
     this.userType = AppUserType.student,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    email: json['email'] as String,
-    profilePictureUrl: json['profilePictureUrl'] as String?,
+    id: json['id']?.toString() ?? '',
+    name: json['name']?.toString() ?? '',
+    email: json['email']?.toString() ?? '',
+    phone: json['phone']?.toString(),
+    profilePictureUrl: json['profilePictureUrl']?.toString(),
     userType: AppUserTypeExtension.fromString(
-      json['userType'] as String? ?? AppUserType.student.name,
+      json['userType']?.toString() ?? AppUserType.student.name,
     ),
   );
 
@@ -47,6 +50,7 @@ class AppUser extends Equatable {
     'id': id,
     'name': name,
     'email': email,
+    'phone': phone,
     'profilePictureUrl': profilePictureUrl,
     'userType': userType.name,
   };
@@ -56,6 +60,7 @@ class AppUser extends Equatable {
     id,
     name,
     email,
+    phone,
     profilePictureUrl,
     userType,
   ];

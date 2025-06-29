@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// import '../models/app_user.dart';
+import '../models/app_user.dart';
 import '../controllers/auth_data_controller.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -23,10 +23,22 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
   
+  // Sign up controllers
+  final _signupNameController = TextEditingController();
+  final _signupEmailController = TextEditingController();
+  final _signupPhoneController = TextEditingController();
+  final _signupPasswordController = TextEditingController();
+  final _signupConfirmPasswordController = TextEditingController();
+  
   bool _isLoading = false;
   bool _isPasswordVisible = false;
   bool _isOtpMode = false;
   bool _isOtpSent = false;
+  bool _isSignupMode = false;
+  bool _isSignupPasswordVisible = false;
+  bool _isSignupConfirmPasswordVisible = false;
+  bool _is2FAMode = false;
+  AppUserType _selectedUserType = AppUserType.student;
   
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -66,6 +78,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _passwordController.dispose();
     _phoneController.dispose();
     _otpController.dispose();
+    _signupNameController.dispose();
+    _signupEmailController.dispose();
+    _signupPhoneController.dispose();
+    _signupPasswordController.dispose();
+    _signupConfirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -77,18 +94,104 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     });
 
     try {
-      // TODO: Replace with actual authentication logic
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-      widget.userLoggedInNotifier.value = true;
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
+      // Use AuthDataController for email/password login
+      final user = await widget.authController.loginWithEmailPassword(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+      
+      // Check if 2FA is enabled
+      if (widget.authController.is2FAEnabled) {
+        // Show 2FA verification screen
+        setState(() {
+          _is2FAMode = true;
+          _isOtpSent = true; // OTP was already sent during login
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please verify your email with the OTP sent'),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        }
+      } else {
+        // 2FA disabled, proceed to home
+        widget.userLoggedInNotifier.value = true;
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/home');
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Login failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleSignup() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Use AuthDataController for signup
+      final user = await widget.authController.signUp(
+        email: _signupEmailController.text,
+        password: _signupPasswordController.text,
+        name: _signupNameController.text,
+        phone: _signupPhoneController.text,
+        profilePictureUrl: null,
+      );
+      
+      // Check if 2FA is enabled
+      if (widget.authController.is2FAEnabled) {
+        // Show 2FA verification screen
+        setState(() {
+          _is2FAMode = true;
+          _isOtpSent = true; // OTP was already sent during signup
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account created! Please verify your email with the OTP sent'),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        }
+      } else {
+        // 2FA disabled, proceed to home
+        widget.userLoggedInNotifier.value = true;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account created successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.of(context).pushReplacementNamed('/home');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Signup failed: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -175,6 +278,63 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
   }
 
+  Future<void> _handle2FAVerification() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final tempUser = widget.authController.currentTempUser;
+      if (tempUser == null) {
+        throw Exception('No pending login session found');
+      }
+
+      // Verify 2FA OTP using email
+      await widget.authController.verify2FAOtp(
+        email: tempUser.email,
+        token: _otpController.text,
+      );
+      
+      // 2FA successful, update login state and navigate
+      widget.userLoggedInNotifier.value = true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Login successful!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('2FA verification failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _toggleMode() {
+    setState(() {
+      _isSignupMode = !_isSignupMode;
+      _isOtpMode = false;
+      _isOtpSent = false;
+      _otpController.clear();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
@@ -240,7 +400,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                               ),
                               const SizedBox(height: 32),
                               
-                              // Login Mode Toggle
+                              // Mode Toggle (Login/Signup)
                               Container(
                                 decoration: BoxDecoration(
                                   color: Colors.grey.shade100,
@@ -251,20 +411,21 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                     Expanded(
                                       child: GestureDetector(
                                         onTap: () => setState(() {
+                                          _isSignupMode = false;
                                           _isOtpMode = false;
                                           _isOtpSent = false;
                                         }),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(vertical: 12),
                                           decoration: BoxDecoration(
-                                            color: !_isOtpMode ? Colors.blue.shade700 : Colors.transparent,
+                                            color: !_isSignupMode ? Colors.blue.shade700 : Colors.transparent,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
-                                            'Email & Password',
+                                            'Login',
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
-                                              color: !_isOtpMode ? Colors.white : Colors.grey.shade600,
+                                              color: !_isSignupMode ? Colors.white : Colors.grey.shade600,
                                               fontWeight: FontWeight.w600,
                                             ),
                                           ),
@@ -274,20 +435,21 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                     Expanded(
                                       child: GestureDetector(
                                         onTap: () => setState(() {
-                                          _isOtpMode = true;
+                                          _isSignupMode = true;
+                                          _isOtpMode = false;
                                           _isOtpSent = false;
                                         }),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(vertical: 12),
                                           decoration: BoxDecoration(
-                                            color: _isOtpMode ? Colors.blue.shade700 : Colors.transparent,
+                                            color: _isSignupMode ? Colors.blue.shade700 : Colors.transparent,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
-                                            'Phone OTP',
+                                            'Sign Up',
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
-                                              color: _isOtpMode ? Colors.white : Colors.grey.shade600,
+                                              color: _isSignupMode ? Colors.white : Colors.grey.shade600,
                                               fontWeight: FontWeight.w600,
                                             ),
                                           ),
@@ -299,20 +461,29 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                               ),
                               const SizedBox(height: 24),
                               
-                              // Login Form
-                              if (!_isOtpMode) ...[
-                                // Email Field
+                              if (_isSignupMode) ...[
+                                // Sign Up Form
                                 TextFormField(
-                                  controller: _emailController,
+                                  controller: _signupNameController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Full Name',
+                                    prefixIcon: Icon(Icons.person_outlined),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter your name';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                
+                                TextFormField(
+                                  controller: _signupEmailController,
                                   keyboardType: TextInputType.emailAddress,
-                                  decoration: InputDecoration(
+                                  decoration: const InputDecoration(
                                     labelText: 'Email',
-                                    prefixIcon: const Icon(Icons.email_outlined),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    filled: true,
-                                    fillColor: Colors.grey.shade50,
+                                    prefixIcon: Icon(Icons.email_outlined),
                                   ),
                                   validator: (value) {
                                     if (value == null || value.isEmpty) {
@@ -326,7 +497,241 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                 ),
                                 const SizedBox(height: 16),
                                 
-                                // Password Field
+                                TextFormField(
+                                  controller: _signupPhoneController,
+                                  keyboardType: TextInputType.phone,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  decoration: const InputDecoration(
+                                    labelText: 'Phone Number',
+                                    prefixIcon: Icon(Icons.phone_outlined),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter your phone number';
+                                    }
+                                    if (value.length < 10) {
+                                      return 'Please enter a valid phone number';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                
+                                // User Type Dropdown
+                                DropdownButtonFormField<AppUserType>(
+                                  value: _selectedUserType,
+                                  decoration: const InputDecoration(
+                                    labelText: 'User Type',
+                                    prefixIcon: Icon(Icons.category_outlined),
+                                  ),
+                                  items: AppUserType.values.map((type) {
+                                    return DropdownMenuItem(
+                                      value: type,
+                                      child: Text(type.name.toUpperCase()),
+                                    );
+                                  }).toList(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedUserType = value!;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                
+                                TextFormField(
+                                  controller: _signupPasswordController,
+                                  obscureText: !_isSignupPasswordVisible,
+                                  decoration: InputDecoration(
+                                    labelText: 'Password',
+                                    prefixIcon: const Icon(Icons.lock_outlined),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _isSignupPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _isSignupPasswordVisible = !_isSignupPasswordVisible;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter a password';
+                                    }
+                                    if (value.length < 6) {
+                                      return 'Password must be at least 6 characters';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                
+                                TextFormField(
+                                  controller: _signupConfirmPasswordController,
+                                  obscureText: !_isSignupConfirmPasswordVisible,
+                                  decoration: InputDecoration(
+                                    labelText: 'Confirm Password',
+                                    prefixIcon: const Icon(Icons.lock_outlined),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _isSignupConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _isSignupConfirmPasswordVisible = !_isSignupConfirmPasswordVisible;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please confirm your password';
+                                    }
+                                    if (value != _signupPasswordController.text) {
+                                      return 'Passwords do not match';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 24),
+                                
+                                // Sign Up Button
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
+                                  child: ElevatedButton(
+                                    onPressed: _isLoading ? null : _handleSignup,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue.shade700,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: _isLoading
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                            ),
+                                          )
+                                        : const Text(
+                                            'Create Account',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                              ] else if (_is2FAMode) ...[
+                                // 2FA Verification UI
+                                Column(
+                                  children: [
+                                    const Icon(
+                                      Icons.security,
+                                      size: 48,
+                                      color: Colors.blue,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Two-Factor Authentication',
+                                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Please enter the verification code sent to your email',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    TextFormField(
+                                      controller: _otpController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Email Verification Code',
+                                        hintText: 'Enter 6-digit code',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        prefixIcon: const Icon(Icons.email),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please enter the verification code';
+                                        }
+                                        if (value.length != 6) {
+                                          return 'Please enter a 6-digit code';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    const SizedBox(height: 24),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 50,
+                                      child: ElevatedButton(
+                                        onPressed: _isLoading ? null : _handle2FAVerification,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blue,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                        ),
+                                        child: _isLoading
+                                            ? const CircularProgressIndicator(color: Colors.white)
+                                            : const Text(
+                                                'Verify & Complete Login',
+                                                style: TextStyle(fontSize: 16),
+                                              ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    TextButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _is2FAMode = false;
+                                          _isOtpSent = false;
+                                          _otpController.clear();
+                                        });
+                                      },
+                                      child: const Text('Back to Login'),
+                                    ),
+                                  ],
+                                ),
+                              ] else if (!_isOtpMode) ...[
+                                // Email/Password Login Form
+                                TextFormField(
+                                  controller: _emailController,
+                                  keyboardType: TextInputType.emailAddress,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Email',
+                                    prefixIcon: Icon(Icons.email_outlined),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter your email';
+                                    }
+                                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                      return 'Please enter a valid email';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                
                                 TextFormField(
                                   controller: _passwordController,
                                   obscureText: !_isPasswordVisible,
@@ -343,11 +748,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                         });
                                       },
                                     ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    filled: true,
-                                    fillColor: Colors.grey.shade50,
                                   ),
                                   validator: (value) {
                                     if (value == null || value.isEmpty) {
@@ -393,21 +793,16 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                   ),
                                 ),
                               ] else ...[
-                                // Phone Field
+                                // Phone OTP Login Form
                                 TextFormField(
                                   controller: _phoneController,
                                   keyboardType: TextInputType.phone,
                                   inputFormatters: [
                                     FilteringTextInputFormatter.digitsOnly,
                                   ],
-                                  decoration: InputDecoration(
+                                  decoration: const InputDecoration(
                                     labelText: 'Phone Number',
-                                    prefixIcon: const Icon(Icons.phone_outlined),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    filled: true,
-                                    fillColor: Colors.grey.shade50,
+                                    prefixIcon: Icon(Icons.phone_outlined),
                                   ),
                                   validator: (value) {
                                     if (value == null || value.isEmpty) {
@@ -422,7 +817,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                 const SizedBox(height: 16),
                                 
                                 if (_isOtpSent) ...[
-                                  // OTP Field
                                   TextFormField(
                                     controller: _otpController,
                                     keyboardType: TextInputType.number,
@@ -430,14 +824,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                       FilteringTextInputFormatter.digitsOnly,
                                       LengthLimitingTextInputFormatter(6),
                                     ],
-                                    decoration: InputDecoration(
+                                    decoration: const InputDecoration(
                                       labelText: 'OTP Code',
-                                      prefixIcon: const Icon(Icons.security_outlined),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.grey.shade50,
+                                      prefixIcon: Icon(Icons.security_outlined),
                                     ),
                                     validator: (value) {
                                       if (value == null || value.isEmpty) {
@@ -451,12 +840,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                   ),
                                   const SizedBox(height: 24),
                                   
-                                  // Verify OTP Button
                                   SizedBox(
                                     width: double.infinity,
                                     height: 50,
                                     child: ElevatedButton(
-                                      onPressed: _isLoading ? null : _handleOtpVerify,
+                                      onPressed: _isLoading ? null : _handle2FAVerification,
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.blue.shade700,
                                         foregroundColor: Colors.white,
@@ -483,7 +871,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                     ),
                                   ),
                                 ] else ...[
-                                  // Send OTP Button
                                   SizedBox(
                                     width: double.infinity,
                                     height: 50,
@@ -519,38 +906,39 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                               
                               const SizedBox(height: 24),
                               
-                              // Forgot Password Link
-                              TextButton(
-                                onPressed: () {
-                                  // TODO: Navigate to forgot password screen
-                                },
-                                child: Text(
-                                  'Forgot Password?',
-                                  style: TextStyle(
-                                    color: Colors.blue.shade700,
-                                    fontWeight: FontWeight.w600,
+                              // Forgot Password Link (only show in login mode)
+                              if (!_isSignupMode) ...[
+                                TextButton(
+                                  onPressed: () {
+                                    // TODO: Navigate to forgot password screen
+                                  },
+                                  child: Text(
+                                    'Forgot Password?',
+                                    style: TextStyle(
+                                      color: Colors.blue.shade700,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
+                                const SizedBox(height: 16),
+                              ],
                               
-                              const SizedBox(height: 16),
-                              
-                              // Sign Up Link
+                              // Mode Switch Link
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
-                                    "Don't have an account? ",
+                                    _isSignupMode 
+                                        ? "Already have an account? " 
+                                        : "Don't have an account? ",
                                     style: TextStyle(
                                       color: Colors.grey.shade600,
                                     ),
                                   ),
                                   TextButton(
-                                    onPressed: () {
-                                      // TODO: Navigate to sign up screen
-                                    },
+                                    onPressed: _toggleMode,
                                     child: Text(
-                                      'Sign Up',
+                                      _isSignupMode ? 'Login' : 'Sign Up',
                                       style: TextStyle(
                                         color: Colors.blue.shade700,
                                         fontWeight: FontWeight.w600,
