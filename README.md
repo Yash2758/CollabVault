@@ -1,4 +1,4 @@
-# collab
+# CollabVault
 
 A new Flutter project.
 
