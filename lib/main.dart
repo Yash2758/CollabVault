@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'controllers/auth_data_controller.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/drawing_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,8 +50,7 @@ class MyApp extends StatelessWidget {
             ),
           ),
           home: loggedIn
-              // ? HomeScreen(authController: authController)
-              ? DrawingScreen()
+              ? HomeScreen(authController: authController)
               : LoginScreen(
             authController: authController,
             userLoggedInNotifier: authController.userLoggedInNotifier,
