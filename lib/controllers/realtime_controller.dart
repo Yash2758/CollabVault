@@ -1,61 +1,42 @@
 import 'package:ably_flutter/ably_flutter.dart' as ably;
 
 class RealtimeController {
-  // Private constructor
-  RealtimeController._();
+  static const String ablyKey = '6BGzoA.DKKcEQ:2WwrrYPBPAY8gdBlePcFrxA2wD9TRKDaUhatSv8gV7c';
 
-  static Future<RealtimeController> create() async {
-    final controller = RealtimeController._();
-    await controller.createAblyRealtimeInstance();
-    return controller;
-  }
+  late ably.Realtime realtime;
+  late ably.RealtimeChannel channel;
 
-  Future<void> createAblyRealtimeInstance() async {
-    // Connect to Ably with your API key
-    final realtimeInstance = ably.Realtime(
-        key: '6BGzoA.DKKcEQ:2WwrrYPBPAY8gdBlePcFrxA2wD9TRKDaUhatSv8gV7c');
-    realtimeInstance.connection
-        .on(ably.ConnectionEvent.connected)
-        .listen((ably.ConnectionStateChange stateChange) async {
-      print('New state is: ${stateChange.current}');
-      switch (stateChange.current) {
-        case ably.ConnectionState.connected:
-          print('Connected to Ably!');
-          break;
-        case ably.ConnectionState.failed:
-          print('The connection to Ably failed.');
-          // Failed connection
-          break;
-        default:
-          break;
-      }
+  Future<void> connectToRoom(String roomId) async {
+    realtime = ably.Realtime(key: ablyKey);
 
-      // Create a channel called 'get-started' and register a listener to subscribe to all messages with the name 'first'
-      final channel = realtimeInstance.channels.get('get-started');
-      channel.subscribe().listen((message) {
-        print('Message received: ${message.data}');
-      });
+    // Wait for connection
+    await realtime.connection.on(ably.ConnectionEvent.connected).first;
 
-      // Publish a message with the name 'first' and the contents 'Here is my first message!'
-      await channel.publish(name: 'first', data: "Here is my first message!");
+    print('Connected to Ably Realtime');
 
-      // Close the connection to Ably
-      realtimeInstance.connection.close();
-      realtimeInstance.connection
-          .on(ably.ConnectionEvent.closed)
-          .listen((ably.ConnectionStateChange stateChange) async {
-        print('New state is: ${stateChange.current}');
-        switch (stateChange.current) {
-          case ably.ConnectionState.closed:
-            print('Closed connection to Ably.');
-            break;
-          case ably.ConnectionState.failed:
-            break;
-          default:
-            break;
-        }
-      });
+    // Get a channel for the room
+    channel = realtime.channels.get('room-$roomId');
+
+    // Listen for new strokes
+    channel.subscribe(name: 'stroke').listen((ably.Message message) {
+      final data = message.data as Map<String, dynamic>;
+      print('Received stroke: $data');
+
+      // Call your canvas update here
+      onStrokeReceived?.call(data);
     });
   }
 
+  void Function(Map<String, dynamic>)? onStrokeReceived;
+
+  Future<void> sendStroke(Map<String, dynamic> stroke) async {
+    await channel.publish(name: 'stroke', data: stroke);
+    print('✏️ Sent stroke: $stroke');
+  }
+
+  Future<void> disconnect() async {
+    await channel.detach();
+    await realtime.close();
+    print('Disconnected from Ably');
+  }
 }
