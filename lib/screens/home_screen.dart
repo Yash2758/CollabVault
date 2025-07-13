@@ -235,7 +235,7 @@ class _HomePageState extends State<HomePage> {
               Center(
                 child: Column(
                   children: [
-                    Image.asset('assets/image/illustration.jpeg', height: 200),
+                  Image.asset('assets/images/illustration.jpeg', height: 200),
                     const SizedBox(height: 20),
                     const Text(
                       'Start creating your first note here.',
