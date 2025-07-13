@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:collab/controllers/drawing_controller.dart';
+import 'package:collab/controllers/whiteboard_data_controller.dart';
 import 'package:collab/models/drawing_point.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
@@ -23,9 +23,19 @@ class _DrawingScreenState extends State<DrawingScreen> {
 
 
   // other state variables...
-  final DrawingController _controller = DrawingController();
+  final WhiteboardDataController _controller = WhiteboardDataController();
   Color selectedColor = Colors.black;
   double strokeWidth = 4.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ensure points reflect the loaded board
+    setState(() {
+      // This will already be set by loadBoard, but ensures UI updates
+      // _controller.points = _controller.points; // No-op, but can trigger setState
+    });
+  }
 
 
   Widget _buildControlsRow() {
