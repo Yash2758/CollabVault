@@ -55,6 +55,13 @@ class MyApp extends StatelessWidget {
                   authController: authController,
                   userLoggedInNotifier: authController.userLoggedInNotifier,
                 ),
+          routes: {
+            '/home': (context) => HomeScreen(authController: authController),
+            '/login': (context) => LoginScreen(
+                  authController: authController,
+                  userLoggedInNotifier: authController.userLoggedInNotifier,
+                ),
+          },
         );
       },
     );

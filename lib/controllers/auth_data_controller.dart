@@ -16,6 +16,7 @@ class AuthDataController {
   
   // Store temporary user data after email/password login for 2FA
   AppUser? _tempUser;
+  AppUser? _user;
   
   // Track login state
   final ValueNotifier<bool> userLoggedInNotifier = ValueNotifier(false);
@@ -43,6 +44,7 @@ class AuthDataController {
   }
   
   AppUser? get tempUser => _tempUser;
+  AppUser? get user => _user;
   
   /// Check if user is currently logged in
   bool isUserLoggedIn() {
@@ -88,16 +90,12 @@ class AuthDataController {
       'profilePictureUrl': profilePictureUrl,
     };
     await _client.from('users').insert(profileData);
-    
-    if (_enable2FA) {
-      _tempUser = AppUser.fromJson(profileData);
-      await sendEmailOtp(email: email);
-    } else {
-      if (response.session != null) {
-        await _storeSessionTokens(response.session!);
-      }
-      userLoggedInNotifier.value = true;
+
+    if (response.session != null) {
+      await _storeSessionTokens(response.session!);
     }
+    userLoggedInNotifier.value = true;
+    _user = AppUser.fromJson(profileData);
     return AppUser.fromJson(profileData);
   }
 
@@ -132,6 +130,7 @@ class AuthDataController {
       if (response.session != null) {
         await _storeSessionTokens(response.session!);
       }
+      _user = user;
       userLoggedInNotifier.value = !_enable2FA;
     }
     
@@ -173,6 +172,7 @@ class AuthDataController {
         .eq('id', authUser.id)
         .single();
     userLoggedInNotifier.value = true;
+    _user = AppUser.fromJson(profileRes);
     return AppUser.fromJson(profileRes);
   }
 
@@ -263,6 +263,7 @@ class AuthDataController {
     await _client.auth.signOut();
     await _removeSessionTokens();
     _tempUser = null; // Clear temp user data
+    _user = null;
     userLoggedInNotifier.value = false;
   }
   
@@ -284,6 +285,7 @@ class AuthDataController {
       if (userId != null) {
         // Fetch user profile for temp user info (optional)
         final profileRes = await _client.from('users').select().eq('id', userId).single();
+        _user = AppUser.fromJson(profileRes);
         return true;
       }
     }

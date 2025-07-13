@@ -1,3 +1,5 @@
+import 'package:collab/main.dart';
+import 'package:collab/models/app_user.dart';
 import 'package:flutter/material.dart';
 import '../controllers/auth_data_controller.dart';
 import 'package:flutter/material.dart';
@@ -13,18 +15,19 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _isDarkMode = false;
 
-  // Simulated user data (can be replaced by actual auth data)
-  final String userName = 'Shreepriya Khare';
-  final String userEmail = 'shreepriya@example.com';
-
-  void _toggleTheme() {
-    setState(() {
-      _isDarkMode = !_isDarkMode;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Use the actual authenticated user from the controller
+    AppUser? user = widget.authController.user;
+    final String userName = user?.name ?? "User";
+    final String userEmail = user?.email ?? "User@gmail.com";
+
+    void _toggleTheme() {
+      setState(() {
+        _isDarkMode = !_isDarkMode;
+      });
+    }
+
     return MaterialApp(
       title: 'Collaborative Whiteboard',
       debugShowCheckedModeBanner: false,
@@ -87,6 +90,22 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void _onMenuSelected(int value) async {
+    if (value == 3) {
+      // Sign Out
+      // Find the AuthDataController from ancestor widget
+      final homeScreenState = context.findAncestorStateOfType<_HomeScreenState>();
+      if (homeScreenState != null) {
+        await homeScreenState.widget.authController.signOut();
+        // After sign out, navigate to login or root
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/login');
+        }
+      }
+    }
+    // Add other menu actions if needed
+  }
+
   @override
   Widget build(BuildContext context) {
     String userInitial = widget.userName.isNotEmpty ? widget.userName[0] : '?';
@@ -142,8 +161,8 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(
-                    onTap: () {
-                      showMenu<int>(
+                    onTap: () async {
+                      final selected = await showMenu<int>(
                         context: context,
                         position: const RelativeRect.fromLTRB(
                           1000,
@@ -193,6 +212,9 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ],
                       );
+                      if (selected != null) {
+                        _onMenuSelected(selected);
+                      }
                     },
                     child: CircleAvatar(
                       backgroundColor: Colors.blue,
