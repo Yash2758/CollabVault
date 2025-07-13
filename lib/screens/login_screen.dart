@@ -110,9 +110,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         email: _emailController.text,
         password: _passwordController.text,
       );
-      print('Login returned user: ' + user.toString());
-      print('is2FAEnabled: ' + widget.authController.is2FAEnabled.toString());
-      print('userLoggedInNotifier: ' + widget.authController.userLoggedInNotifier.value.toString());
+      print('Login returned user: $user');
+      print('is2FAEnabled: ${widget.authController.is2FAEnabled}');
+      print('userLoggedInNotifier: ${widget.authController.userLoggedInNotifier.value}');
       // Check if 2FA is enabled
       if (widget.authController.is2FAEnabled) {
         // Show 2FA verification screen
@@ -130,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         }
       }
     } catch (e) {
-      print('Login error: ' + e.toString());
+      print('Login error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
