@@ -3,6 +3,8 @@ import 'package:collab/models/app_user.dart';
 import 'package:flutter/material.dart';
 import '../controllers/auth_data_controller.dart';
 import 'package:flutter/material.dart';
+import '../controllers/whiteboard_data_controller.dart';
+import 'drawing_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthDataController authController;
@@ -83,6 +85,24 @@ class _HomePageState extends State<HomePage> {
   int _selectedTagIndex = 0;
   int _selectedIndex = 0;
   final List<String> _tags = ['All', 'Favorites'];
+  List<String> _boards = [];
+  bool _loadingBoards = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBoards();
+  }
+
+  Future<void> _loadBoards() async {
+    final controller = WhiteboardDataController();
+    await controller.init();
+    final boards = await controller.listBoards();
+    setState(() {
+      _boards = boards;
+      _loadingBoards = false;
+    });
+  }
 
   void _onBottomNavTap(int index) {
     setState(() {
@@ -93,17 +113,50 @@ class _HomePageState extends State<HomePage> {
   void _onMenuSelected(int value) async {
     if (value == 3) {
       // Sign Out
-      // Find the AuthDataController from ancestor widget
       final homeScreenState = context.findAncestorStateOfType<_HomeScreenState>();
       if (homeScreenState != null) {
         await homeScreenState.widget.authController.signOut();
-        // After sign out, navigate to login or root
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/login');
         }
       }
     }
-    // Add other menu actions if needed
+  }
+
+  Future<void> _createNewWhiteboard() async {
+    final controller = WhiteboardDataController();
+    final boardId = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        String tempId = '';
+        return AlertDialog(
+          title: const Text('New Whiteboard'),
+          content: TextField(
+            decoration: const InputDecoration(labelText: 'Board Name/ID'),
+            onChanged: (val) => tempId = val,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, tempId),
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+    if (boardId != null && boardId.isNotEmpty) {
+      await controller.init();
+      await controller.createNewBoard(boardId);
+      await _loadBoards();
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => DrawingScreen()),
+      );
+    }
   }
 
   @override
@@ -119,178 +172,175 @@ class _HomePageState extends State<HomePage> {
         bodyContent = const Center(child: Text('Bin'));
         break;
       default:
-        bodyContent = Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      decoration: InputDecoration(
-                        hintText: 'Search notes...',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    icon: const Icon(Icons.notifications_none),
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return AlertDialog(
-                            title: const Text('Notifications'),
-                            content: const Text('No new notifications.'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('OK'),
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () async {
-                      final selected = await showMenu<int>(
-                        context: context,
-                        position: const RelativeRect.fromLTRB(
-                          1000,
-                          80,
-                          10,
-                          100,
-                        ),
-                        items: <PopupMenuEntry<int>>[
-                          PopupMenuItem<int>(
-                            value: 0,
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: Colors.blue,
-                                child: Text(
-                                  userInitial,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              title: Text(widget.userName),
-                              subtitle: Text(widget.userEmail),
-                            ),
-                          ),
-                          const PopupMenuDivider(),
-                          const PopupMenuItem<int>(
-                            value: 1,
-                            child: ListTile(
-                              leading: Icon(Icons.edit),
-                              title: Text("Customize Avatar"),
-                            ),
-                          ),
-                          const PopupMenuItem<int>(
-                            value: 2,
-                            child: ListTile(
-                              leading: Icon(Icons.settings),
-                              title: Text("Settings"),
-                            ),
-                          ),
-                          const PopupMenuItem<int>(
-                            value: 3,
-                            child: ListTile(
-                              leading: Icon(Icons.logout),
-                              title: Text("Sign Out"),
-                            ),
-                          ),
-                        ],
-                      );
-                      if (selected != null) {
-                        _onMenuSelected(selected);
-                      }
-                    },
-                    child: CircleAvatar(
-                      backgroundColor: Colors.blue,
-                      child: Text(
-                        userInitial,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: List.generate(_tags.length, (index) {
-                  final bool isSelected = _selectedTagIndex == index;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: ChoiceChip(
-                      label: Text(
-                        _tags[index],
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.black,
-                        ),
-                      ),
-                      selected: isSelected,
-                      selectedColor: Colors.blue,
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedTagIndex = index;
-                        });
-                      },
-                    ),
-                  );
-                }),
-              ),
-              const Spacer(),
-              Center(
-                child: Column(
+        bodyContent = SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                  Image.asset('assets/images/illustration.jpeg', height: 200),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Start creating your first note here.',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.edit),
-                      label: const Text("New note"),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const NoteCreationPage(),
+                    Expanded(
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Search notes...',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: const Icon(Icons.notifications_none),
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: const Text('Notifications'),
+                              content: const Text('No new notifications.'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            );
+                          },
                         );
                       },
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
+                    ),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () async {
+                        final selected = await showMenu<int>(
+                          context: context,
+                          position: const RelativeRect.fromLTRB(
+                            1000,
+                            80,
+                            10,
+                            100,
+                          ),
+                          items: <PopupMenuEntry<int>>[
+                            PopupMenuItem<int>(
+                              value: 0,
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: Colors.blue,
+                                  child: Text(
+                                    userInitial,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                title: Text(widget.userName),
+                                subtitle: Text(widget.userEmail),
+                              ),
+                            ),
+                            const PopupMenuDivider(),
+                            const PopupMenuItem<int>(
+                              value: 1,
+                              child: ListTile(
+                                leading: Icon(Icons.edit),
+                                title: Text("Customize Avatar"),
+                              ),
+                            ),
+                            const PopupMenuItem<int>(
+                              value: 2,
+                              child: ListTile(
+                                leading: Icon(Icons.settings),
+                                title: Text("Settings"),
+                              ),
+                            ),
+                            const PopupMenuItem<int>(
+                              value: 3,
+                              child: ListTile(
+                                leading: Icon(Icons.logout),
+                                title: Text("Sign Out"),
+                              ),
+                            ),
+                          ],
+                        );
+                        if (selected != null) {
+                          _onMenuSelected(selected);
+                        }
+                      },
+                      child: CircleAvatar(
                         backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        child: Text(
+                          userInitial,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                Row(
+                  children: List.generate(_tags.length, (index) {
+                    final bool isSelected = _selectedTagIndex == index;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: ChoiceChip(
+                        label: Text(
+                          _tags[index],
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.black,
+                          ),
+                        ),
+                        selected: isSelected,
+                        selectedColor: Colors.blue,
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedTagIndex = index;
+                          });
+                        },
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Your Whiteboards',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                _loadingBoards
+                    ? const Center(child: CircularProgressIndicator())
+                    : _boards.isEmpty
+                        ? const Text('No whiteboards found.')
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _boards.length,
+                            separatorBuilder: (context, idx) => const Divider(),
+                            itemBuilder: (context, idx) {
+                              final board = _boards[idx];
+                              return ListTile(
+                                leading: const Icon(Icons.dashboard_customize),
+                                title: Text(board),
+                                onTap: () async {
+                                  final controller = WhiteboardDataController();
+                                  await controller.init();
+                                  await controller.loadBoard(board);
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => DrawingScreen()),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+              ],
+            ),
           ),
         );
         break;
@@ -360,7 +410,7 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
 
-      body: bodyContent,
+      body: SafeArea(child: bodyContent),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onBottomNavTap,
@@ -372,12 +422,7 @@ class _HomePageState extends State<HomePage> {
       ),
 
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const WhiteboardPage()),
-          );
-        },
+        onPressed: _createNewWhiteboard,
         backgroundColor: Colors.blue,
         child: const Icon(Icons.add),
       ),
