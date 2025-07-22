@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:collab/controllers/whiteboard_data_controller.dart';
 import 'package:collab/models/drawing_point.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:collab/screens/drawer_menu.dart';
 
 enum ToolMode { pen, eraser, text, shape }
 class DrawingScreen extends StatefulWidget {
@@ -136,7 +135,7 @@ class _DrawingScreenState extends State<DrawingScreen> {
               ),
             ],
           ),
-          drawer: const DrawerMenu(),
+          // drawer: const DrawerMenu(),
           body: Stack(
             children: [
               LayoutBuilder(
