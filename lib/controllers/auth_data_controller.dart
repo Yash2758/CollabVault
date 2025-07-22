@@ -293,10 +293,6 @@ class AuthDataController {
   }
 }
 
-void print() {
-  
-}
-
 /// Simple exception wrapper for auth errors
 class AuthException implements Exception {
   final String message;
